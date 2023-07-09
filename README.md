@@ -19,6 +19,14 @@ km are shown.
 
 The latency is the result of one ICMP request sent to the server's IP address.
 
+## Installation
+
+Install with [pipx](https://github.com/pypa/pipx):
+
+```
+$ pipx install mullvad-closest
+```
+
 ## Usage
 ```
 $ mullvad-closest --help
