@@ -1,12 +1,9 @@
-import json
-import platform
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
-from typing import Optional, Union
-
 import requests
-from geopy.distance import distance
+from dataclasses import dataclass
+from typing import Optional, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from ping3 import ping
+from geopy.distance import distance
 
 class UnknownLocationType(Exception):
     pass
@@ -15,14 +12,13 @@ class UnknownLocationType(Exception):
 class Location:
     ip_address: str
     country: str
-    latitude: float
-    longitude: float
+    city: str
     hostname: Optional[str] = None
+    public_key: Optional[str] = None
+    multihop_port: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     type: Optional[str] = None
-    city: Optional[str] = None
-    is_active: Optional[bool] = None
-    is_mullvad_owned: Optional[str] = None
-    provider: Optional[str] = None
     latency: Optional[float] = None
     distance_from_my_location: Optional[float] = None
 
@@ -36,45 +32,30 @@ def get_my_location() -> Location:
     data = resp.json()
 
     return Location(
-        ip_address=data["ip"], country=data["country"], longitude=data["longitude"], latitude=data["latitude"]
+        ip_address=data["ip"], country=data["country"], city=None, latitude=data["latitude"], longitude=data["longitude"]
     )
 
-def fetch_and_parse_relays(only_location_type: Optional[str] = None) -> list[Location]:
-    resp = requests.get("https://api.mullvad.net/app/v1/relays")
-    resp.raise_for_status()
-    data = resp.json()
+def fetch_and_parse_relays(only_location_type: Optional[str] = None) -> List[Location]:
+    response = requests.get("https://api.mullvad.net/app/v1/relays")
+    response.raise_for_status()
 
+    data = response.json()
     locations = []
-
-    for country in data["countries"]:
-        for city in country["cities"]:
-            for relay in city["relays"]:
-                try:
-                    location_type = parse_location_type(relay["endpoint_data"])
-                except UnknownLocationType as e:
-                    print(e)
-                    location_type = None
-
-                if location_type == "bridge":
-                    continue
-
-                if only_location_type is not None and location_type != only_location_type:
-                    continue
-
-                locations.append(
-                    Location(
-                        ip_address=relay["ipv4_addr_in"],
-                        country=country["name"],
-                        latitude=city["latitude"],
-                        longitude=city["longitude"],
-                        hostname=relay["hostname"],
-                        type=location_type,
-                        city=city["name"],
-                        is_active=relay["active"],
-                        is_mullvad_owned=relay["owned"],
-                        provider=relay["provider"],
-                    )
+    for location_key, location_value in data["locations"].items():
+        for relay in data["openvpn"]["relays"]:
+            if relay["location"] == location_key:
+                location = Location(
+                    country=location_value["country"],
+                    city=location_value["city"],
+                    type="openvpn",
+                    hostname=relay["hostname"],
+                    ip_address=relay["ipv4_addr_in"],
+                    public_key=relay.get("public_key", None),
+                    multihop_port=relay.get("multihop_port", None),
+                    latitude=location_value["latitude"],
+                    longitude=location_value["longitude"],
                 )
+                locations.append(location)
 
     return locations
 
@@ -117,12 +98,3 @@ def ping_locations(locations: list[Location]) -> list[Location]:
                 locations_with_latency.append(location)
 
     return sorted(locations_with_latency, key=lambda loc: (loc.latency is None, loc.latency))
-
-def parse_location_type(location_type: Union[str, dict]) -> str:
-    if location_type in ("openvpn", "bridge"):
-        return location_type
-    if isinstance(location_type, dict):
-        if "wireguard" in location_type:
-            return "wireguard"
-
-    raise UnknownLocationType(f"Location type {location_type} is not supported")
