@@ -16,8 +16,7 @@ CONTEXT_SETTINGS = {"max_content_width": 120}
     "-m", "--max-distance", default=500, show_default=True, help="Only show servers within this distance from myself"
 )
 def find(max_distance: float, server_type: Optional[str]) -> None:
-    relays_file = utils.get_relays_file_path()
-    locations = utils.parse_relays_file(relays_file, only_location_type=server_type)
+    locations = utils.fetch_and_parse_relays(only_location_type=server_type)
     locations = utils.get_closest_locations(locations, max_distance=max_distance)
     locations = utils.ping_locations(locations)
 
