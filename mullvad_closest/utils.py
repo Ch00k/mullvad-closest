@@ -2,19 +2,14 @@ import json
 import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional, Union
 
 import requests
 from geopy.distance import distance
 from ping3 import ping
 
-RELAYS_FILE = "relays.json"
-
-
 class UnknownLocationType(Exception):
     pass
-
 
 @dataclass
 class Location:
@@ -35,22 +30,6 @@ class Location:
     def coordinates(self) -> tuple[float, float]:
         return self.latitude, self.longitude
 
-
-def get_relays_file_path() -> Path:
-    system = platform.system()
-
-    if system == "Linux":
-        path = Path("/var/cache/mullvad-vpn")
-    elif system == "Darwin":
-        path = Path("/Library/Caches/mullvad-vpn")
-    elif system == "Windows":
-        path = Path("C:/ProgramData/Mullvad VPN/cache")
-    else:
-        raise RuntimeError(f"Unsupported system: {system}")
-
-    return path / "relays.json"
-
-
 def get_my_location() -> Location:
     resp = requests.get("https://am.i.mullvad.net/json")
     resp.raise_for_status()
@@ -60,28 +39,16 @@ def get_my_location() -> Location:
         ip_address=data["ip"], country=data["country"], longitude=data["longitude"], latitude=data["latitude"]
     )
 
-
-def parse_relays_file(relays_file: Path, only_location_type: Optional[str] = None) -> list[Location]:
-    if not relays_file.exists():
-        raise RuntimeError(f"{relays_file} does not exist")
-
-    with open(relays_file, "r") as f:
-        data = json.load(f)
+def fetch_and_parse_relays(only_location_type: Optional[str] = None) -> list[Location]:
+    resp = requests.get("https://api.mullvad.net/app/v1/relays")
+    resp.raise_for_status()
+    data = resp.json()
 
     locations = []
 
     for country in data["countries"]:
         for city in country["cities"]:
             for relay in city["relays"]:
-                # It's either of the following three:
-                #
-                # "endpoint_data": "openvpn"
-                # "endpoint_data": "bridge"
-                # "endpoint_data": {
-                #   "wireguard": {
-                #     "public_key": "foobarbaz"
-                #   }
-                # }
                 try:
                     location_type = parse_location_type(relay["endpoint_data"])
                 except UnknownLocationType as e:
@@ -111,7 +78,6 @@ def parse_relays_file(relays_file: Path, only_location_type: Optional[str] = Non
 
     return locations
 
-
 def get_closest_locations(
     locations: list[Location], max_distance: float = 500, location_type: Optional[str] = None
 ) -> list[Location]:
@@ -133,7 +99,6 @@ def get_closest_locations(
         locations_with_distance, key=lambda loc: (loc.distance_from_my_location is None, loc.distance_from_my_location)
     )
 
-
 def ping_locations(locations: list[Location]) -> list[Location]:
     locations_with_latency = []
 
@@ -152,7 +117,6 @@ def ping_locations(locations: list[Location]) -> list[Location]:
                 locations_with_latency.append(location)
 
     return sorted(locations_with_latency, key=lambda loc: (loc.latency is None, loc.latency))
-
 
 def parse_location_type(location_type: Union[str, dict]) -> str:
     if location_type in ("openvpn", "bridge"):
