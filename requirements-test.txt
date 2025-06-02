@@ -1,6 +1,2 @@
-black
-flake8
-Flake8-pyproject
-isort
 mypy
 pytest

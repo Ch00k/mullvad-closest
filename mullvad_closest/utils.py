@@ -1,4 +1,5 @@
 import json
+import math
 import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -28,7 +29,7 @@ class Location:
     is_active: Optional[bool] = None
     is_mullvad_owned: Optional[str] = None
     provider: Optional[str] = None
-    latency: Optional[float] = None
+    latency: Optional[float | bool] = None
     distance_from_my_location: Optional[float] = None
 
     @property
@@ -57,7 +58,10 @@ def get_my_location() -> Location:
     data = resp.json()
 
     return Location(
-        ip_address=data["ip"], country=data["country"], longitude=data["longitude"], latitude=data["latitude"]
+        ip_address=data["ip"],
+        country=data["country"],
+        longitude=data["longitude"],
+        latitude=data["latitude"],
     )
 
 
@@ -130,7 +134,8 @@ def get_closest_locations(
         locations_with_distance.append(location)
 
     return sorted(
-        locations_with_distance, key=lambda loc: (loc.distance_from_my_location is None, loc.distance_from_my_location)
+        locations_with_distance,
+        key=lambda loc: (loc.distance_from_my_location is None, loc.distance_from_my_location),
     )
 
 
@@ -151,7 +156,12 @@ def ping_locations(locations: list[Location]) -> list[Location]:
                 location.latency = latency
                 locations_with_latency.append(location)
 
-    return sorted(locations_with_latency, key=lambda loc: (loc.latency is None, loc.latency))
+    def latency_sort_key(loc: Location) -> float:
+        if loc.latency in (None, False):
+            return math.inf
+        return loc.latency
+
+    return sorted(locations_with_latency, key=latency_sort_key)
 
 
 def parse_location_type(location_type: Union[str, dict]) -> str:
