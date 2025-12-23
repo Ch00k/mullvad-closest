@@ -1,3 +1,6 @@
+> [!NOTE]
+> This project will not be maintained going forward. Consider using [mullvad-compass](https://github.com/Ch00k/mullvad-compass) instead.
+
 # mullvad-closest
 
 *mullvad-closest* helps pick a server that would have the lowest latency at (and would usually be the closest to) your
